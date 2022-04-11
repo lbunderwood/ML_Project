@@ -12,9 +12,14 @@ import numpy as np
 # ---------Important functions----------
 
 # import_dataset function
-# returns array containing full dataset
+# returns arrays containing test data and predictions
 def import_dataset():
-    return "data", "predictions"
+    data = pd.read_csv("training1.csv")
+    feature_count = 4096 + 512
+    x = data.iloc[:, :feature_count]
+    y = data.iloc[:, feature_count:]
+
+    return x.values, y.values
 
 
 # preprocessing function
@@ -38,7 +43,9 @@ def train(mlm, x, y):
 # output_results function
 # outputs predictions to csv, generates graphics and console output
 def output_results(mlm, x, y):
-    print("Results: ", mlm, x, y)
+    print("Results: ", x.shape, y.shape,
+          x[0, 0], x[0, -1], x[-1, 0], x[-1, -1],
+          y[0, 0], y[0, 1], y[-1, 0], y[-1, 1])
 
 
 # run the program if this is the main script
