@@ -8,6 +8,9 @@ import tensorflow as tf
 import pandas as pd
 import numpy as np
 
+# ---------Global variables-------------
+FEATURE_COUNT = 4096 + 512
+
 
 # ---------Important functions----------
 
@@ -15,9 +18,8 @@ import numpy as np
 # returns arrays containing test data and predictions
 def import_dataset():
     data = pd.read_csv("training1.csv")
-    feature_count = 4096 + 512
-    x = data.iloc[:, :feature_count]
-    y = data.iloc[:, feature_count:]
+    x = data.iloc[:, :FEATURE_COUNT]
+    y = data.iloc[:, FEATURE_COUNT:]
 
     return x.values, y.values
 
@@ -32,17 +34,28 @@ def preprocessing(x):
 # build_mlm function
 # returns constructed mlm
 def build_mlm():
-    return "mlm"
+    # layers - one for input, two hidden layers of 100
+    layers = [tf.keras.Input(shape=(FEATURE_COUNT,)),
+              tf.keras.layers.Dense(100, activation="relu"),
+              tf.keras.layers.Dense(100, activation="relu"),
+              tf.keras.layers.Dense(1, activation="heaviside")
+              ]
+    model = tf.keras.Sequential(layers)
+    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+    return model
 
 
-# I think this is a one-liner anyway, might not need a function
-def train(mlm, x, y):
-    return mlm
+# train function
+# takes mlm, data, and true labels as input
+# returns trained mlm
+def train(model, x, y):
+    model.fit(x, y, batch_size=FEATURE_COUNT//8, epochs=10, shuffle=True)
+    return model
 
 
 # output_results function
 # outputs predictions to csv, generates graphics and console output
-def output_results(mlm, x, y):
+def output_results(model, x, y):
     print("Results: ", x.shape, y.shape,
           x[0, 0], x[0, -1], x[-1, 0], x[-1, -1],
           y[0, 0], y[0, 1], y[-1, 0], y[-1, 1])
