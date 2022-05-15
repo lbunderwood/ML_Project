@@ -29,6 +29,14 @@ def import_dataset():
 # takes array of full dataset as input
 # returns array with preprocessing completed
 def preprocessing(x, y):
+    # integrate confidence labels into labels, then remove them
+    for row in y:
+        if row[0] == 0:
+            row[0] = 1 - row[1]
+        else:
+            row[0] = row[1]
+    y = y[:, 0]
+
     x, y = skl.utils.shuffle(x, y)
 
     def divide(arr):
@@ -57,7 +65,7 @@ def build_mlm():
 # takes mlm, data, and true labels as input
 # returns trained mlm
 def train(model, x, y):
-    model.fit(x, y, batch_size=FEATURE_COUNT//8, epochs=10, shuffle=True)
+    model.fit(x, y, batch_size=FEATURE_COUNT//8, validation_split=0.2, epochs=10, shuffle=True)
     return model
 
 
@@ -79,8 +87,8 @@ if __name__ == '__main__':
 
         x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
         y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
-        x_valid = x_sets[(i+2) % set_count]
-        y_valid = x_sets[(i+2) % set_count]
+        x_test = x_sets[(i+2) % set_count]
+        y_test = x_sets[(i+2) % set_count]
 
         mlm = train(mlm, x_train, y_train)
-        output_results(mlm, x_valid, y_valid)
+        output_results(mlm, x_test, y_test)
