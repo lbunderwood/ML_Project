@@ -49,12 +49,12 @@ def preprocessing(x, y):
 
 # build_mlm function
 # returns constructed mlm
-def build_mlm(hidden_layers=2, layer_size=100):
+def build_mlm(hidden_layers=2, layer_size=100, input_size=FEATURE_COUNT):
     print("\nStarted MLM construction...")
     # layers -  input layer: has shape matching number of features
     #           hidden layers: have number and shape specified in arguments, and relu activation
     #           output layer: single neuron, sigmoid activation
-    layers = [tf.keras.Input(shape=(FEATURE_COUNT,))]
+    layers = [tf.keras.Input(shape=(input_size,))]
     for layer_num in range(0, hidden_layers):
         layers.append(tf.keras.layers.Dense(layer_size, activation="relu"))
     layers.append(tf.keras.layers.Dense(1, activation="sigmoid"))
@@ -99,6 +99,20 @@ if __name__ == '__main__':
         x_test = x_sets[(i+2) % set_count]
         y_test = y_sets[(i+2) % set_count]
 
-        mlm = build_mlm()
-        mlm = train(mlm, x_train, y_train)
-        output_results(mlm, x_test, y_test)
+        cnn_size = 4096
+        x_train_CNN = x_train[:, :cnn_size]
+        x_test_CNN = x_test[:, :cnn_size]
+
+        gist_size = 512
+        x_train_GIST = x_train[:, -gist_size:]
+        x_test_GIST = x_test[:, -gist_size:]
+
+        print("MLM using only CNN features:")
+        mlm = build_mlm(input_size=cnn_size)
+        mlm = train(mlm, x_train_CNN, y_train)
+        output_results(mlm, x_test_CNN, y_test)
+
+        print("MLM using only GIST features:")
+        mlm = build_mlm(input_size=gist_size)
+        mlm = train(mlm, x_train_GIST, y_train)
+        output_results(mlm, x_test_GIST, y_test)
