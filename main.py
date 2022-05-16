@@ -8,6 +8,7 @@ import tensorflow as tf
 import pandas as pd
 import numpy as np
 import sklearn as skl
+from sklearn import decomposition
 
 # ---------Global variables-------------
 FEATURE_COUNT = 4096 + 512
@@ -30,7 +31,7 @@ def import_dataset():
 # preprocessing function
 # takes array of full dataset as input
 # returns array with preprocessing completed
-def preprocessing(x, y):
+def preprocessing(x, y, cnn_features=4096, gist_features=512):
     print("\nStarted preprocessing...")
     # throw out confidence labels for now
     y = y[:, 0]
@@ -41,7 +42,23 @@ def preprocessing(x, y):
         feature = x[:, i]
         x[:, i] = (feature - np.mean(feature)) / np.std(feature)
 
-    #shuffle data
+    # perform PCA for dimensionality reduction, keeping CNN and GIST features separate
+    cnn_count = 4096
+    x_cnn = x[:, :cnn_count]
+    x_gist = x[:, cnn_count:]
+
+    pca_cnn = skl.decomposition.PCA(n_components=cnn_features)
+    pca_cnn.fit(x_cnn)
+    x_cnn = pca_cnn.transform(x_cnn)
+
+    pca_gist = skl.decomposition.PCA(n_components=gist_features)
+    pca_gist.fit(x_gist)
+    x_gist = pca_gist.transform(x_gist)
+
+    x = np.append(x_cnn, x_gist, axis=1)
+    print("x size = ", x.shape)
+
+    # shuffle data
     x, y = skl.utils.shuffle(x, y)
 
     def divide(arr):
@@ -94,18 +111,35 @@ def output_results(model, x, y):
 # run the program if this is the main script
 if __name__ == '__main__':
     full_x, full_y = import_dataset()
-    x_sets, y_sets = preprocessing(full_x, full_y)
 
-    # build 3 mlms, train each on 2/3 sets, save third for testing
-    set_count = 3
-    for i in range(set_count):
-        print("\nStarting dataset number ", i)
+    cnn_feature_nums = [1, 2, 3, 4, 6, 8, 10]
+    gist_feature_nums = [1, 2, 3, 4, 6, 8, 10]
+    results = np.zeros((7, 7, 2))
+    i, j = 0, 0
+    for cnn_features in cnn_feature_nums:
 
-        x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
-        y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
-        x_test = x_sets[(i+2) % set_count]
-        y_test = y_sets[(i+2) % set_count]
+        for gist_features in gist_feature_nums:
+            x_sets, y_sets = preprocessing(full_x, full_y, cnn_features, gist_features)
+            result_sets = np.array([])
+            # build 3 mlms, train each on 2/3 sets, save third for testing
+            set_count = 3
+            for k in range(set_count):
+                print("\nStarting dataset number ", k, " with cnn features = ", cnn_features, " gist features = ", gist_features)
 
-        mlm = build_mlm()
-        mlm = train(mlm, x_train, y_train)
-        output_results(mlm, x_test, y_test)
+                x_train = np.concatenate((x_sets[k], x_sets[(k+1) % set_count]))
+                y_train = np.concatenate((y_sets[k], y_sets[(k+1) % set_count]))
+                x_test = x_sets[(k+2) % set_count]
+                y_test = y_sets[(k+2) % set_count]
+
+                mlm = build_mlm(input_size=x_test.shape[1])
+                mlm = train(mlm, x_train, y_train)
+                output_results(mlm, x_test, y_test)
+                result_sets = np.append(result_sets, mlm.evaluate(x_test, y_test))
+
+            result_sets = result_sets.reshape((3, 2))
+            results[i, j, 0] = np.average(result_sets[:, 0])
+            results[i, j, 1] = np.average(result_sets[:, 1])
+            j += 1
+        j = 0
+        i += 1
+    print(results)
