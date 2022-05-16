@@ -35,6 +35,13 @@ def preprocessing(x, y):
     # throw out confidence labels for now
     y = y[:, 0]
 
+    # normalize features to mean 0, sd 1
+    features = x.shape[1]
+    for i in range(features):
+        feature = x[:, i]
+        x[:, i] = (feature - np.mean(feature)) / np.std(feature)
+
+    #shuffle data
     x, y = skl.utils.shuffle(x, y)
 
     def divide(arr):
@@ -99,20 +106,6 @@ if __name__ == '__main__':
         x_test = x_sets[(i+2) % set_count]
         y_test = y_sets[(i+2) % set_count]
 
-        cnn_size = 4096
-        x_train_CNN = x_train[:, :cnn_size]
-        x_test_CNN = x_test[:, :cnn_size]
-
-        gist_size = 512
-        x_train_GIST = x_train[:, -gist_size:]
-        x_test_GIST = x_test[:, -gist_size:]
-
-        print("MLM using only CNN features:")
-        mlm = build_mlm(input_size=cnn_size)
-        mlm = train(mlm, x_train_CNN, y_train)
-        output_results(mlm, x_test_CNN, y_test)
-
-        print("MLM using only GIST features:")
-        mlm = build_mlm(input_size=gist_size)
-        mlm = train(mlm, x_train_GIST, y_train)
-        output_results(mlm, x_test_GIST, y_test)
+        mlm = build_mlm()
+        mlm = train(mlm, x_train, y_train)
+        output_results(mlm, x_test, y_test)
