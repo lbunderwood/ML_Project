@@ -95,7 +95,7 @@ def build_mlm(hidden_layers=2, layer_size=100, input_size=FEATURE_COUNT):
 # returns trained mlm
 def train(model, x, y):
     print("\nStarted training...")
-    model.fit(x, y, batch_size=FEATURE_COUNT//8, validation_split=0.2, epochs=10, shuffle=True)
+    model.fit(x, y, batch_size=FEATURE_COUNT//8, validation_split=0.2, epochs=30, shuffle=True)
     print("Training complete!\n")
     return model
 
@@ -111,35 +111,17 @@ def output_results(model, x, y):
 # run the program if this is the main script
 if __name__ == '__main__':
     full_x, full_y = import_dataset()
+    x_sets, y_sets = preprocessing(full_x, full_y, cnn_features=4, gist_features=4)
+    # build 3 mlms, train each on 2/3 sets, save third for testing
+    set_count = 3
+    for k in range(set_count):
+        print("\nStarting dataset number ", k)
 
-    cnn_feature_nums = [1, 2, 3, 4, 6, 8, 10]
-    gist_feature_nums = [1, 2, 3, 4, 6, 8, 10]
-    results = np.zeros((7, 7, 2))
-    i, j = 0, 0
-    for cnn_features in cnn_feature_nums:
+        x_train = np.concatenate((x_sets[k], x_sets[(k+1) % set_count]))
+        y_train = np.concatenate((y_sets[k], y_sets[(k+1) % set_count]))
+        x_test = x_sets[(k+2) % set_count]
+        y_test = y_sets[(k+2) % set_count]
 
-        for gist_features in gist_feature_nums:
-            x_sets, y_sets = preprocessing(full_x, full_y, cnn_features, gist_features)
-            result_sets = np.array([])
-            # build 3 mlms, train each on 2/3 sets, save third for testing
-            set_count = 3
-            for k in range(set_count):
-                print("\nStarting dataset number ", k, " with cnn features = ", cnn_features, " gist features = ", gist_features)
-
-                x_train = np.concatenate((x_sets[k], x_sets[(k+1) % set_count]))
-                y_train = np.concatenate((y_sets[k], y_sets[(k+1) % set_count]))
-                x_test = x_sets[(k+2) % set_count]
-                y_test = y_sets[(k+2) % set_count]
-
-                mlm = build_mlm(input_size=x_test.shape[1])
-                mlm = train(mlm, x_train, y_train)
-                output_results(mlm, x_test, y_test)
-                result_sets = np.append(result_sets, mlm.evaluate(x_test, y_test))
-
-            result_sets = result_sets.reshape((3, 2))
-            results[i, j, 0] = np.average(result_sets[:, 0])
-            results[i, j, 1] = np.average(result_sets[:, 1])
-            j += 1
-        j = 0
-        i += 1
-    print(results)
+        mlm = build_mlm(input_size=x_test.shape[1])
+        mlm = train(mlm, x_train, y_train)
+        output_results(mlm, x_test, y_test)
