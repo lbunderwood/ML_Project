@@ -32,12 +32,7 @@ def import_dataset():
 # returns array with preprocessing completed
 def preprocessing(x, y):
     print("\nStarted preprocessing...")
-    # integrate confidence labels into labels, then remove them
-    for row in y:
-        if row[0] == 0:
-            row[0] = 1 - row[1]
-        else:
-            row[0] = row[1]
+    # throw out confidence labels for now
     y = y[:, 0]
 
     x, y = skl.utils.shuffle(x, y)
@@ -51,16 +46,19 @@ def preprocessing(x, y):
     print("Preprocessing complete!\n")
     return divide(x), divide(y)
 
+
 # build_mlm function
 # returns constructed mlm
-def build_mlm():
+def build_mlm(hidden_layers=2, layer_size=100):
     print("\nStarted MLM construction...")
-    # layers - one for input, two hidden layers of 100
-    layers = [tf.keras.Input(shape=(FEATURE_COUNT,)),
-              tf.keras.layers.Dense(100, activation="relu"),
-              tf.keras.layers.Dense(100, activation="relu"),
-              tf.keras.layers.Dense(1, activation="sigmoid")
-              ]
+    # layers -  input layer: has shape matching number of features
+    #           hidden layers: have number and shape specified in arguments, and relu activation
+    #           output layer: single neuron, sigmoid activation
+    layers = [tf.keras.Input(shape=(FEATURE_COUNT,))]
+    for layer_num in range(0, hidden_layers):
+        layers.append(tf.keras.layers.Dense(layer_size, activation="relu"))
+    layers.append(tf.keras.layers.Dense(1, activation="sigmoid"))
+
     model = tf.keras.Sequential(layers)
     model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
 
@@ -91,16 +89,16 @@ if __name__ == '__main__':
     full_x, full_y = import_dataset()
     x_sets, y_sets = preprocessing(full_x, full_y)
 
-    # build 3 mlms, train each on 2/3 sets, save third for validation
+    # build 3 mlms, train each on 2/3 sets, save third for testing
     set_count = 3
     for i in range(set_count):
-        print("\nStarting MLM number ", i)
-        mlm = build_mlm()
+        print("\nStarting dataset number ", i)
 
         x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
         y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
         x_test = x_sets[(i+2) % set_count]
         y_test = y_sets[(i+2) % set_count]
 
+        mlm = build_mlm()
         mlm = train(mlm, x_train, y_train)
         output_results(mlm, x_test, y_test)
