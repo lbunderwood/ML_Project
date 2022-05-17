@@ -37,10 +37,16 @@ def preprocessing(x, y, x2, y2, k_neighbors=5, cnn_features=4096, gist_features=
     y = y[:, 0]
     y2 = y2[:, 0]
 
-    num = 0
+    # normalize features to mean 0, sd 1
+    # manipulate x2 by the same amount, since they should have similar mean, sd
+    # and we want estimates to make sense/apply evenly during KNN
+    for i in range(FEATURE_COUNT):
+        feature = x[:, i]
+        x[:, i] = (feature - np.mean(feature)) / np.std(feature)
+        x2[:, i] = (x2[:, i] - np.mean(feature)) / np.std(feature)
+
     # do KNN imputing on x2
     for row2 in x2:
-        num += 1
         # array of distances between row2 and all rows in x
         distances = np.zeros(x.shape[0])
         # array of the values from row2 that are not nan
@@ -89,11 +95,6 @@ def preprocessing(x, y, x2, y2, k_neighbors=5, cnn_features=4096, gist_features=
     # combine x, x2 and y, y2
     x = np.append(x, x2, axis=0)
     y = np.append(y, y2)
-
-    # normalize features to mean 0, sd 1
-    for i in range(FEATURE_COUNT):
-        feature = x[:, i]
-        x[:, i] = (feature - np.mean(feature)) / np.std(feature)
 
     # perform PCA for dimensionality reduction, keeping CNN and GIST features separate
     cnn_count = 4096
@@ -165,17 +166,28 @@ if __name__ == '__main__':
     full_x, full_y = import_dataset("training1.csv")
     partial_x, partial_y = import_dataset("training2.csv")
 
-    x_sets, y_sets = preprocessing(full_x, full_y, partial_x, partial_y, cnn_features=4, gist_features=4)
-    # build 3 mlms, train each on 2/3 sets, save third for testing
-    set_count = 3
-    for k in range(set_count):
-        print("\nStarting dataset number ", k)
+    k_amounts = [1, 3, 5, 10, 20, 100, 300, 600]
+    result_avgs = np.zeros((8, 2))
+    for k in range(len(k_amounts)):
+        x_sets, y_sets = preprocessing(full_x, full_y, partial_x, partial_y, k_neighbors=k_amounts[k], cnn_features=4, gist_features=4)
+        result_sets = np.zeros((3, 2))
+        # build 3 mlms, train each on 2/3 sets, save third for testing
+        set_count = 3
+        for i in range(set_count):
+            print("\nStarting dataset number ", i, " k = ", k_amounts[k])
 
-        x_train = np.concatenate((x_sets[k], x_sets[(k+1) % set_count]))
-        y_train = np.concatenate((y_sets[k], y_sets[(k+1) % set_count]))
-        x_test = x_sets[(k+2) % set_count]
-        y_test = y_sets[(k+2) % set_count]
+            x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
+            y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
+            x_test = x_sets[(i+2) % set_count]
+            y_test = y_sets[(i+2) % set_count]
 
-        mlm = build_mlm(input_size=x_test.shape[1])
-        mlm = train(mlm, x_train, y_train)
-        output_results(mlm, x_test, y_test)
+            mlm = build_mlm(input_size=x_test.shape[1])
+            mlm = train(mlm, x_train, y_train)
+            output_results(mlm, x_test, y_test)
+            result = mlm.evaluate(x_test, y_test)
+            result_sets[i, 0] = result[0]
+            result_sets[i, 1] = result[1]
+        result_avgs[k][0] = np.average(result_sets[:, 0])
+        result_avgs[k][1] = np.average(result_sets[:, 1])
+
+    print(result_avgs)
