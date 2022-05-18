@@ -28,15 +28,11 @@ def import_dataset(dataset):
     return x.values, y.values
 
 
-# preprocessing function
-# takes array of full dataset as input
-# returns array with preprocessing completed
-def preprocessing(x, y, x2, y2, k_neighbors=5, cnn_features=4096, gist_features=512):
-    print("\nStarted preprocessing...")
-    # throw out confidence labels for now
-    y = y[:, 0]
-    y2 = y2[:, 0]
-
+# normalize function
+# normalizes both arrays based on mean, sd of the first one
+# returns both arrays
+def normalize(x, x2):
+    print("Normalizing data...")
     # normalize features to mean 0, sd 1
     # manipulate x2 by the same amount, since they should have similar mean, sd
     # and we want estimates to make sense/apply evenly during KNN
@@ -44,7 +40,14 @@ def preprocessing(x, y, x2, y2, k_neighbors=5, cnn_features=4096, gist_features=
         feature = x[:, i]
         x[:, i] = (feature - np.mean(feature)) / np.std(feature)
         x2[:, i] = (x2[:, i] - np.mean(feature)) / np.std(feature)
+    return x, x2
 
+
+# k nearest neighbors function
+# performs KNN imputing on second array based on data in first array
+# returns second array with imputing done
+def k_nearest_neighbors(x, x2, k_neighbors=5):
+    print("Performing KNN imputing...")
     # do KNN imputing on x2
     for row2 in x2:
         # array of distances between row2 and all rows in x
@@ -68,12 +71,8 @@ def preprocessing(x, y, x2, y2, k_neighbors=5, cnn_features=4096, gist_features=
             for j in range(len(row2_idx)):
                 row_nums[j] = x[i][int(row2_idx[j])]
             # compute euclidean distance, store in distances
-            dist = np.linalg.norm(row2_nums-row_nums)
+            dist = np.linalg.norm(row2_nums - row_nums)
             distances[i] = dist
-
-            # check to make sure no nans make it through
-            if pd.isna(dist):
-                raise ValueError("NaN found in calculated distance during KNN")
 
         # get indices that would sort distances
         distIdx = np.argsort(distances)
@@ -91,37 +90,73 @@ def preprocessing(x, y, x2, y2, k_neighbors=5, cnn_features=4096, gist_features=
                 # average them and assign new value
                 avg = np.average(k_values)
                 row2[i] = avg
+    return x2
+
+
+# dimensionality reduction function
+# takes two arrays, PCA is fit to first the array, used on the second array
+# returns second array after dimensionality reduction is performed
+def dimensionality_reduction(x, x2, cnn_features=4, gist_features=4):
+    print("Performing PCA dimensionality reduction...")
+    # perform PCA for dimensionality reduction, keeping CNN and GIST features separate
+    cnn_count = 4096
+    x_cnn = x[:, :cnn_count]
+    x_gist = x[:, cnn_count:]
+    x2_cnn = x2[:, :cnn_count]
+    x2_gist = x2[:, cnn_count:]
+
+    pca_cnn = skl.decomposition.PCA(n_components=cnn_features)
+    pca_cnn.fit(x_cnn)
+    x2_cnn = pca_cnn.transform(x2_cnn)
+
+    pca_gist = skl.decomposition.PCA(n_components=gist_features)
+    pca_gist.fit(x_gist)
+    x2_gist = pca_gist.transform(x2_gist)
+
+    x2 = np.append(x2_cnn, x2_gist, axis=1)
+    return x2
+
+
+# preprocessing function for training data
+# takes arrays with complete and incomplete data sets with separate labels
+# returns arrays with preprocessing completed
+def preprocessing_train(x, y, x2, y2):
+    print("\nStarted preprocessing...")
+    # throw out confidence labels
+    y = y[:, 0]
+    y2 = y2[:, 0]
+
+    x, x2 = normalize(x, x2)
+    x2 = k_nearest_neighbors(x, x2)
 
     # combine x, x2 and y, y2
     x = np.append(x, x2, axis=0)
     y = np.append(y, y2)
 
-    # perform PCA for dimensionality reduction, keeping CNN and GIST features separate
-    cnn_count = 4096
-    x_cnn = x[:, :cnn_count]
-    x_gist = x[:, cnn_count:]
-
-    pca_cnn = skl.decomposition.PCA(n_components=cnn_features)
-    pca_cnn.fit(x_cnn)
-    x_cnn = pca_cnn.transform(x_cnn)
-
-    pca_gist = skl.decomposition.PCA(n_components=gist_features)
-    pca_gist.fit(x_gist)
-    x_gist = pca_gist.transform(x_gist)
-
-    x = np.append(x_cnn, x_gist, axis=1)
+    x = dimensionality_reduction(x, x)
 
     # shuffle data
     x, y = skl.utils.shuffle(x, y)
 
-    def divide(arr):
-        length = arr.shape[0]
-        return [arr[:length // 3],
-                arr[length // 3:2 * length // 3],
-                arr[2 * length // 3:]]
-
+    # split data into three sets
+    length = x.shape[0]
+    split = [length//3, 2*length//3]
+    x_split = np.split(x, split)
+    y_split = np.split(y, split)
     print("Preprocessing complete!\n")
-    return divide(x), divide(y)
+    return x_split, y_split
+
+
+# preprocessing function for test data
+# takes the 600-length dataset and the test dataset as arguments
+# returns a preprocessed test dataset
+def preprocessing_test(x, x2):
+    print("\nStarted preprocessing...")
+    x, x2 = normalize(x, x2)
+    x2 = k_nearest_neighbors(x, x2)
+    x2 = dimensionality_reduction(x, x2)
+    print("Preprocessing complete!\n")
+    return x2
 
 
 # build_mlm function
@@ -148,16 +183,29 @@ def build_mlm(hidden_layers=2, layer_size=100, input_size=FEATURE_COUNT):
 # returns trained mlm
 def train(model, x, y):
     print("\nStarted training...")
-    model.fit(x, y, batch_size=FEATURE_COUNT//8, validation_split=0.2, epochs=30, shuffle=True)
+    model.fit(x, y, validation_split=0.2, epochs=10, shuffle=True)
     print("Training complete!\n")
     return model
 
 
 # output_results function
-# outputs predictions to csv, generates graphics and console output
-def output_results(model, x, y):
+# outputs predictions to csv
+def output_results(models, x):
     print("\nStarted result output...")
-    print("Results: ", model.evaluate(x, y))
+
+    predictions1 = mlms[0].predict(x)
+    predictions2 = mlms[1].predict(x)
+    predictions3 = mlms[2].predict(x)
+    predictions = np.array([predictions1, predictions2, predictions3])
+
+    pred_vote = np.zeros_like(predictions[0])
+    for i in range(len(predictions[0])):
+        average = np.average(predictions[:, i])
+        if average >= 0.5:
+            pred_vote[i] = 1
+        else:
+            pred_vote[i] = 0
+    np.savetxt("predictions.csv", pred_vote, delimiter=",", fmt="%d")
     print("Result output complete!\n")
 
 
@@ -166,28 +214,29 @@ if __name__ == '__main__':
     full_x, full_y = import_dataset("training1.csv")
     partial_x, partial_y = import_dataset("training2.csv")
 
-    k_amounts = [1, 3, 5, 10, 20, 100, 300, 600]
-    result_avgs = np.zeros((8, 2))
-    for k in range(len(k_amounts)):
-        x_sets, y_sets = preprocessing(full_x, full_y, partial_x, partial_y, k_neighbors=k_amounts[k], cnn_features=4, gist_features=4)
-        result_sets = np.zeros((3, 2))
-        # build 3 mlms, train each on 2/3 sets, save third for testing
-        set_count = 3
-        for i in range(set_count):
-            print("\nStarting dataset number ", i, " k = ", k_amounts[k])
+    x_sets, y_sets = preprocessing_train(full_x, full_y, partial_x, partial_y)
 
-            x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
-            y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
-            x_test = x_sets[(i+2) % set_count]
-            y_test = y_sets[(i+2) % set_count]
+    mlms = np.array([])
+    results = np.zeros((3, 2))
+    # build 3 mlms, train each on 2/3 sets, save third for testing
+    set_count = 3
+    for i in range(set_count):
+        print("\nStarting mlp number ", i + 1)
 
-            mlm = build_mlm(input_size=x_test.shape[1])
-            mlm = train(mlm, x_train, y_train)
-            output_results(mlm, x_test, y_test)
-            result = mlm.evaluate(x_test, y_test)
-            result_sets[i, 0] = result[0]
-            result_sets[i, 1] = result[1]
-        result_avgs[k][0] = np.average(result_sets[:, 0])
-        result_avgs[k][1] = np.average(result_sets[:, 1])
+        x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
+        y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
+        x_test = x_sets[(i+2) % set_count]
+        y_test = y_sets[(i+2) % set_count]
 
-    print(result_avgs)
+        mlm = build_mlm(input_size=x_test.shape[1])
+        mlm = train(mlm, x_train, y_train)
+        mlm.evaluate(x_test, y_test)
+        mlms = np.append(mlms, mlm)
+
+    x_final, y_final = import_dataset("test.csv")
+    x_final = preprocessing_test(full_x, x_final)
+    output_results(mlms, x_final)
+
+
+
+
