@@ -120,7 +120,7 @@ def dimensionality_reduction(x, x2, cnn_features=4, gist_features=4):
 # preprocessing function for training data
 # takes arrays with complete and incomplete data sets with separate labels
 # returns arrays with preprocessing completed
-def preprocessing_train(x, y, x2, y2):
+def preprocessing_train(x, y, x2, y2, features=3):
     print("\nStarted preprocessing...")
     # throw out confidence labels
     y = y[:, 0]
@@ -133,7 +133,7 @@ def preprocessing_train(x, y, x2, y2):
     x = np.append(x, x2, axis=0)
     y = np.append(y, y2)
 
-    x = dimensionality_reduction(x, x)
+    x = dimensionality_reduction(x, x, cnn_features=features, gist_features=features)
 
     # shuffle data
     x, y = skl.utils.shuffle(x, y)
@@ -161,7 +161,7 @@ def preprocessing_test(x, x2):
 
 # build_mlm function
 # returns constructed mlm
-def build_mlm(hidden_layers=2, layer_size=100, input_size=FEATURE_COUNT):
+def build_mlm(hidden_layers=2, layer_size=50, input_size=FEATURE_COUNT):
     print("\nStarted MLM construction...")
     # layers -  input layer: has shape matching number of features
     #           hidden layers: have number and shape specified in arguments, and relu activation
@@ -213,29 +213,30 @@ def output_results(models, x):
 if __name__ == '__main__':
     full_x, full_y = import_dataset("training1.csv")
     partial_x, partial_y = import_dataset("training2.csv")
+    sizes = [1, 3, 4, 10, 100]
+    for size in sizes:
+        x_sets, y_sets = preprocessing_train(full_x, full_y, partial_x, partial_y, features=size)
 
-    x_sets, y_sets = preprocessing_train(full_x, full_y, partial_x, partial_y)
+        # build 3 mlms, train each on 2/3 sets, save third for testing
+        mlms = np.array([])
+        set_count = 3
+        for i in range(set_count):
+            print("\nStarting mlp number ", i + 1)
 
-    mlms = np.array([])
-    results = np.zeros((3, 2))
-    # build 3 mlms, train each on 2/3 sets, save third for testing
-    set_count = 3
-    for i in range(set_count):
-        print("\nStarting mlp number ", i + 1)
+            x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
+            y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
+            x_test = x_sets[(i+2) % set_count]
+            y_test = y_sets[(i+2) % set_count]
 
-        x_train = np.concatenate((x_sets[i], x_sets[(i+1) % set_count]))
-        y_train = np.concatenate((y_sets[i], y_sets[(i+1) % set_count]))
-        x_test = x_sets[(i+2) % set_count]
-        y_test = y_sets[(i+2) % set_count]
+            mlm = build_mlm(input_size=x_test.shape[1])
+            mlm = train(mlm, x_train, y_train)
+            print("Size: ", size)
+            mlm.evaluate(x_test, y_test)
+            mlms = np.append(mlms, mlm)
 
-        mlm = build_mlm(input_size=x_test.shape[1])
-        mlm = train(mlm, x_train, y_train)
-        mlm.evaluate(x_test, y_test)
-        mlms = np.append(mlms, mlm)
-
-    x_final, y_final = import_dataset("test.csv")
-    x_final = preprocessing_test(full_x, x_final)
-    output_results(mlms, x_final)
+    #x_final, y_final = import_dataset("test.csv")
+    #x_final = preprocessing_test(full_x, x_final)
+    #output_results(mlms, x_final)
 
 
 
